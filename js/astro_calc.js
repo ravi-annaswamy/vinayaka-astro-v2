@@ -20,15 +20,8 @@ function calculateNakshatraPada(degree) {
  * @returns {number} navamsaSign - Index from 0 to 11 representing the navamsa sign.
  */
 function calculateNavamsaPosition(longitude) {
-  // Determine which sign the planet is in (0-11)
-  let sign = Math.floor(longitude / 30);
-  // Position within that sign (0 to <30)
-  let posInSign = longitude % 30;
-  // Navamsa division within the sign
-  let navamsa = Math.floor(posInSign / 3.333);
-  // Final navamsa sign index
-  let navamsaSign = (sign * 9 + navamsa) % 12;
-  return navamsaSign;
+  // Exact 3°20' parts (js/navamsa.js); dividing by 3.333 misplaced planets near a pada boundary
+  return navamsaSignIndex(longitude);
 }
 
 /**
@@ -64,14 +57,16 @@ function calculatePlanetaryPositions(t, timeData, cityInfo) {
   let planetsTamil = ['லக்னம்', 'சூரியன்', 'சந்திரன்', 'செவ்வாய்', 'புதன்', 'குரு', 'சுக்கிரன்', 'சனி', 'ராகு', 'கேது'];
 
   for (let i = 0; i < planetsEng.length; i++) {
-    let longitude = (pp[i] !== undefined && !isNaN(pp[i])) ? pp[i].toFixed(1) : 'N/A';
-    let degreeInSign = (pp[i] !== undefined && !isNaN(pp[i])) ? (pp[i] % 30).toFixed(1) : 'N/A';
+    // `longitude` keeps full precision: navamsa, nakshatra and dasha all read it, so they agree at every boundary.
+    // Only the display text `degree` is rounded.
+    const rawLongitude = (pp[i] !== undefined && !isNaN(pp[i])) ? pp[i] : NaN;
+    let degreeInSign = (!isNaN(rawLongitude)) ? (rawLongitude % 30).toFixed(1) : 'N/A';
     let zodiacSign = signIndices[i] ? indianZodiacTamil[signIndices[i] - 1] : 'N/A';
-    let nakshatraPada = (pp[i] !== undefined && !isNaN(pp[i]))
-      ? calculateNakshatraPada(pp[i])
+    let nakshatraPada = (!isNaN(rawLongitude))
+      ? calculateNakshatraPada(rawLongitude)
       : { nakshatra: 'N/A', pada: 'N/A' };
-    let nakshatraIndex = Math.floor(pp[i] / 13.33);
-    let nakshatraLord = nakshatraLordsTamil[nakshatraIndex % 27];
+    let nakshatraIndex = (!isNaN(rawLongitude)) ? Math.floor(rawLongitude / (40 / 3)) : 0;
+    let nakshatraLord = (!isNaN(rawLongitude)) ? nakshatraLordsTamil[nakshatraIndex % 27] : 'N/A';
     let houseNumber = (signIndices[i] - signIndices[0] + 12) % 12 + 1;
 
     planetaryPositions.push({
@@ -79,7 +74,7 @@ function calculatePlanetaryPositions(t, timeData, cityInfo) {
       nakshatraPada: nakshatraPada.nakshatra + ' ' + nakshatraPada.pada,
       zodiacSign: zodiacSign,
       degree: degreeInSign,
-      longitude: parseFloat(longitude),
+      longitude: rawLongitude,
       nakshatraLord: nakshatraLord,
       houseNumber: houseNumber
     });

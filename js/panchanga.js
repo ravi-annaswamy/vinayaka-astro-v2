@@ -38,11 +38,13 @@ const THITHI_NAMES_TAMIL = {
   "Purnima/Amavasya": "பௌர்ணமி/அமாவாசை"
 };
 
+// Speeds are degrees per day, so bal / speed is in days: × 24 gives hours after the base clock time.
+// The base ("timeZone" here) is the local clock time of the moment, in hours.
 function findThithi(sun, moon, diffSpeed, timeZone) {
   const diff = getMoonSunDiff(sun, moon);
   const thithiIndex = Math.floor(diff / AstroConsts.THITHI_LENGTH);
   const bal = AstroConsts.THITHI_LENGTH - (diff % AstroConsts.THITHI_LENGTH);
-  const endTime = (bal / diffSpeed) + timeZone;
+  const endTime = (bal / diffSpeed) * 24 + timeZone;
 
   return { name: THITHI_NAMES[thithiIndex], endTime };
 }
@@ -90,13 +92,13 @@ function findYoga(sun, moon, totalSpeed, timeZone) {
   const pos = (sun + moon) % 360;
   const yogaIndex = Math.floor(pos / AstroConsts.YOGA_LENGTH);
   const bal = AstroConsts.YOGA_LENGTH - (pos % AstroConsts.YOGA_LENGTH);
-  const endTime = (bal / totalSpeed) + timeZone;
+  const endTime = (bal / totalSpeed) * 24 + timeZone;
 
   return { name: YOGA_NAMES[yogaIndex], endTime };
 }
 
 const KARANA_NAMES = [
-  "Bava", "Balava", "Kaulava", "Taitila", "Garija",
+  "Bava", "Balava", "Kaulava", "Taitila", "Gara",
   "Vanija", "Vishti", "Shakuni", "Chatushpada", "Naga", "Kimstughna"
 ];
 
@@ -105,7 +107,7 @@ const KARANA_NAMES_TAMIL = {
   Balava: "பலவ",
   Kaulava: "கௌலவ",
   Taitila: "தைதில",
-  Garija: "கரஜ",
+  Gara: "கரஜ",
   Vanija: "வணிஜ",
   Vishti: "விஷ்டி",
   Shakuni: "சகுனி",
@@ -119,22 +121,30 @@ const PAKSHA_TAMIL = {
   "Krishna Paksha": "கிருஷ்ண பக்ஷ"
 };
 
-function calcKarana(sun, moon, diffSpeed, thithiEnd, timeZone) {
-  const position = getMoonSunDiff(sun, moon);
-  const karanaIndex = Math.floor((position % AstroConsts.THITHI_LENGTH) / AstroConsts.KARANA_LENGTH);
-  const firstBal = AstroConsts.KARANA_LENGTH - (position % AstroConsts.KARANA_LENGTH);
-  const firstEndTime = firstBal / diffSpeed + timeZone;
+// The 60 half-tithis of a lunar month (6° of Moon−Sun each): 1 is Kimstughna, 2–57 cycle the
+// 7 movable karanas (Bava … Vishti), 58 Shakuni, 59 Chatushpada, 60 Naga.
+function karanaForHalfTithi(n) {
+  if (n === 1) return "Kimstughna";
+  if (n >= 58) return ["Shakuni", "Chatushpada", "Naga"][n - 58];
+  return KARANA_NAMES[(n - 2) % 7];
+}
 
-  const secondKaranaIndex = (karanaIndex + 1) % KARANA_NAMES.length;
+function calcKarana(sun, moon, diffSpeed, thithiEnd, timeZone) {
+  const elongation = ((moon - sun) % 360 + 360) % 360;   // full 0–360°, not folded at 180
+  const half = Math.floor(elongation / AstroConsts.KARANA_LENGTH) + 1;   // 1..60
+  const firstBal = AstroConsts.KARANA_LENGTH - (elongation % AstroConsts.KARANA_LENGTH);
+  const firstEndTime = (firstBal / diffSpeed) * 24 + timeZone;
+  const secondEndTime = firstEndTime + (AstroConsts.KARANA_LENGTH / diffSpeed) * 24;
 
   return {
-    firstKarana: { name: KARANA_NAMES[karanaIndex], endTime: firstEndTime },
-    secondKarana: { name: KARANA_NAMES[secondKaranaIndex], endTime: thithiEnd }
+    firstKarana: { name: karanaForHalfTithi(half), endTime: firstEndTime },
+    secondKarana: { name: karanaForHalfTithi(half % 60 + 1), endTime: secondEndTime }
   };
 }
 
 function calcPaksha(sun, moon) {
-  return (moon >= sun && moon - sun < 180) ? "Shukla Paksha" : "Krishna Paksha";
+  const elongation = ((moon - sun) % 360 + 360) % 360;   // handles the wrap at 0° Aries
+  return elongation < 180 ? "Shukla Paksha" : "Krishna Paksha";
 }
 
 // panchanga.js
@@ -172,17 +182,24 @@ function displayPanchang(thithi, yoga, karana, paksha, nakshatraInfo) {
 }
 
 function buildPanchangaSentence(thithi, yoga, karana, paksha, nakshatraInfo) {
-  const thithiName = THITHI_NAMES_TAMIL[thithi.name] || thithi.name;
+  let thithiName = THITHI_NAMES_TAMIL[thithi.name] || thithi.name;
+  // The 15th tithi is Purnima in the bright half, Amavasya in the dark half
+  if (thithi.name === "Purnima/Amavasya") thithiName = paksha === "Shukla Paksha" ? "பௌர்ணமி" : "அமாவாசை";
   const yogaName = YOGA_NAMES_TAMIL[yoga.name] || yoga.name;
   const pakshaName = PAKSHA_TAMIL[paksha] || paksha;
   const karanaName = KARANA_NAMES_TAMIL[karana.firstKarana.name] || karana.firstKarana.name;
   const thithiEnd = formatPanchangaTime(thithi.endTime);
-  return `${nakshatraInfo.nakshatra} நக்ஷத்திரம் ${pakshaName} ${thithiName} திதி (${thithiEnd} வரை) ${karanaName} கரணம் ${yogaName} யோகம்`;
+  const karanaEnd = formatPanchangaTime(karana.firstKarana.endTime);
+  const yogaEnd = formatPanchangaTime(yoga.endTime);
+  return `${nakshatraInfo.nakshatra} நக்ஷத்திரம் ${pakshaName} ${thithiName} திதி (${thithiEnd} வரை) ${karanaName} கரணம் (${karanaEnd} வரை) ${yogaName} யோகம் (${yogaEnd} வரை)`;
 }
 
+// Clock time of an end time given in hours from the birth day's midnight; later days are marked
 function formatPanchangaTime(hoursValue) {
+  const days = Math.floor(hoursValue / 24);
   const normalized = ((hoursValue % 24) + 24) % 24;
   const hh = Math.floor(normalized);
   const mm = Math.floor((normalized - hh) * 60);
-  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  const dayMark = days === 1 ? ' மறுநாள்' : days > 1 ? ` +${days} நாள்` : '';
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}${dayMark}`;
 }
