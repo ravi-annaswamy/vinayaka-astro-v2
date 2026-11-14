@@ -6,6 +6,7 @@
   
   <!-- Include scripts -->
   <script src="js/constants.js"></script>
+  <script src="js/navamsa.js"></script>
   <script src="js/astro_calc.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/cities.js?v=20260212-2"></script>
@@ -939,7 +940,7 @@ function addMaantiPosition(targetArray, birthInfo, positions) {
     longitude: Number(maantiLong.toFixed(1)),
     zodiacSign: indianZodiacTamil[signIdx],
     nakshatraPada: `${nak.nakshatra} ${nak.pada}`,
-    nakshatraLord: nakshatraLordsTamil[Math.floor(maantiLong / 13.333)],
+    nakshatraLord: nakshatraLordsTamil[Math.floor(maantiLong / (40 / 3)) % 27],
     houseNumber: houseNum
   });
 }
