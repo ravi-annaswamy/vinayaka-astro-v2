@@ -609,7 +609,7 @@ function calculatePositions() {
   }
 
   // 2. Compute time and date data
-  const timeData = extractTimeData(hour, minutes, cityInfo);
+  const timeData = extractTimeData(hour, minutes, cityInfo, year, month, day);
   const dateData = calculateDateData(year, month, day, timeData.time);
 
   // 3. Calculate planetary positions for birth moment
@@ -946,11 +946,34 @@ function addMaantiPosition(targetArray, birthInfo, positions) {
 }
 
     // Extract and adjust time data
-function extractTimeData(hour, minutes, cityInfo) {
+// Hours to add to the local clock time to get UT on that date (west positive), from the city's IANA zone,
+// so that daylight time is applied when it was in force on the birth date. Returns null if it cannot be found.
+function zoneHoursOnDate(zoneName, year, month, day, hour, minutes) {
+  try {
+    var fmt = new Intl.DateTimeFormat('en-US', { timeZone: zoneName, hourCycle: 'h23',
+      year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' });
+    var want = Date.UTC(year, month - 1, day, hour, minutes), u = want, off = 0;
+    for (var i = 0; i < 3; i++) {
+      var p = {};
+      fmt.formatToParts(new Date(u)).forEach(function (x) { p[x.type] = Number(x.value); });
+      off = Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute) - u;   // local minus UT at instant u
+      u = want - off;
+    }
+    var h = -off / 3600000;
+    return isFinite(h) ? h : null;
+  } catch (e) { return null; }
+}
+
+function extractTimeData(hour, minutes, cityInfo, year, month, day) {
   var zoneHours = parseFloat(cityInfo.timezone.hours) +
                   parseFloat(cityInfo.timezone.minutes / 60);
   if (cityInfo.timezone.direction === 'E') {
     zoneHours *= -1;  
+  }
+  // A city that observes daylight time: take the offset in force on the birth date, not the standard one
+  if (cityInfo.dst && cityInfo.timezoneName && year) {
+    var z = zoneHoursOnDate(cityInfo.timezoneName, year, month, day, hour, minutes);
+    if (z !== null) zoneHours = z;
   }
   var time = parseFloat(hour) + parseFloat(minutes / 60) + zoneHours;
   return { time: time, zoneHours: zoneHours };
